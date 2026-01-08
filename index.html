@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+  <meta charset="UTF-8">
+  <title>بازی سطح و حجم سه‌بعدی</title>
+  <style>
+    body {
+      font-family: 'Tahoma';
+      text-align: center;
+      margin: 0;
+      background: linear-gradient(135deg, #74ebd5 0%, #ACB6E5 100%);
+      color: #333;
+    }
+    #quiz { margin: 20px; }
+    .question { font-size: 22px; margin: 20px; font-weight: bold; }
+    .option {
+      display: inline-block;
+      width: 200px;
+      background: #eee;
+      margin: 10px;
+      padding: 15px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-size: 18px;
+    }
+    .option:hover { transform: scale(1.05); background: #ddd; }
+    .correct { background: #4CAF50; color: white; }
+    .wrong { background: #F44336; color: white; }
+    canvas { display: block; margin: auto; }
+    #score, #timer { font-size: 20px; margin: 10px; font-weight: bold; }
+    #difficulty { margin: 20px; }
+    button {
+      padding: 12px 25px; margin: 5px; border: none; border-radius: 8px;
+      font-size: 16px; cursor: pointer; transition: 0.3s;
+    }
+    button:hover { transform: scale(1.05); background: #333; color: #fff; }
+  </style>
+</head>
+<body>
+  <h1>🎮 بازی سطح و حجم سه‌بعدی</h1>
+
+  <div id="difficulty">
+    <p>سطح سختی را انتخاب کنید:</p>
+    <button id="btn-easy">آسان</button>
+    <button id="btn-medium">متوسط</button>
+    <button id="btn-hard">سخت</button>
+  </div>
+
+  <div id="score"></div>
+  <div id="timer"></div>
+  <div id="quiz"></div>
+
+  <!-- Three.js و OrbitControls نسخه‌های هماهنگ -->
+  <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+  <script>
+    // داده‌های مراحل
+    const stages = [
+      { q: "حجم مکعبی با ضلع ۴ چقدر است؟", opts: ["۶۴","۱۲","۴۸","۸۰"], correct: 0, geo: () => new THREE.BoxGeometry(2,2,2) },
+      { q: "مساحت سطحی مکعبی با ضلع ۴ چقدر است؟", opts: ["۹۶","۶۴","۴۸","۱۲۰"], correct: 0, geo: () => new THREE.BoxGeometry(2,2,2) },
+      { q: "حجم کره‌ای با شعاع ۳ چقدر است؟ (تقریباً)", opts: ["۱۱۳","۹۰","۷۵","۱۵۰"], correct: 0, geo: () => new THREE.SphereGeometry(1.5,32,32) },
+      { q: "مساحت سطحی کره‌ای با شعاع ۳ چقدر است؟ (تقریباً)", opts: ["۱۱۳","۱۱۳.1","۱۱۳.2","۱۱۳.3"], correct: 0, geo: () => new THREE.SphereGeometry(1.5,32,32) },
+      { q: "حجم مخروطی با شعاع قاعده ۳ و ارتفاع ۴ چقدر است؟", opts: ["۳۷","۱۱۳","۱۵۰","۷۵"], correct: 1, geo: () => new THREE.ConeGeometry(1.5,2,32) },
+      { q: "مساحت سطحی مخروطی با شعاع ۳ و ارتفاع ۴ چقدر است؟ (تقریباً)", opts: ["۷۵","۹۰","۱۱۳","۱۲۰"], correct: 2, geo: () => new THREE.ConeGeometry(1.5,2,32) },
+      { q: "حجم استوانه‌ای با شعاع ۲ و ارتفاع ۵ چقدر است؟", opts: ["۶۳","۴۰","۵۰","۷۰"], correct: 0, geo: () => new THREE.CylinderGeometry(1,1,2.5,32) },
+      { q: "مساحت سطحی استوانه‌ای با شعاع ۲ و ارتفاع ۵ چقدر است؟", opts: ["۸۸","۹۰","۱۰۰","۱۲۰"], correct: 0, geo: () => new THREE.CylinderGeometry(1,1,2.5,32) }
+    ];
+
+    // وضعیت بازی
+    let difficulty = null;
+    let currentStage = 0;
+    let score = 0;
+    let timeLeft = 0;
+    let timerInterval = null;
+
+    // سه‌بعدی
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / (window.innerHeight/2), 0.1, 1000);
+    camera.position.z = 5;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight / 2);
+    document.body.appendChild(renderer.domElement);
+
+    const light1 = new THREE.PointLight(0x00ffff, 1, 100);
+    light1.position.set(10, 10, 10);
+    scene.add(light1);
+
+    const light2 = new THREE.PointLight(0xff00ff, 1, 100);
+    light2.position.set(-10, -10, -10);
+    scene.add(light2);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+    let shape = null;
+
+    // دکمه‌ها
+    const btnEasy = document.getElementById('btn-easy');
+    const btnMedium = document.getElementById('btn-medium');
+    const btnHard = document.getElementById('btn-hard');
+btnEasy.addEventListener('click', () => startGame('easy'));
+    btnMedium.addEventListener('click', () => startGame('medium'));
+    btnHard.addEventListener('click', () => startGame('hard'));
+
+    function startGame(level) {
+      try {
+        console.log('شروع بازی با سطح:', level);
+        difficulty = level;
+        score = 0;
+        currentStage = 0;
+        document.getElementById('difficulty').style.display = 'none';
+        document.getElementById('score').innerText = 'امتیاز: ' + score;
+        loadStage(currentStage);
+      } catch (e) {
+        console.error('خطا در startGame:', e);
+        alert('مشکل در شروع بازی. کنسول را بررسی کن.');
+      }
+    }
+
+    function loadStage(index) {
+      try {
+        console.log('بارگذاری مرحله:', index);
+        // حذف شکل قبلی
+        if (shape) {
+          scene.remove(shape);
+          shape.geometry.dispose();
+          shape.material.dispose();
+          shape = null;
+        }
+
+        // ساخت شکل جدید
+        const material = new THREE.MeshPhongMaterial({ color: 0x00ff00, shininess: 100 });
+        shape = new THREE.Mesh(stages[index].geo(), material);
+        scene.add(shape);
+
+        // نمایش سؤال و گزینه‌ها
+        const quizDiv = document.getElementById('quiz');
+        quizDiv.innerHTML = '';
+        const qEl = document.createElement('div');
+        qEl.className = 'question';
+        qEl.textContent = stages[index].q;
+        quizDiv.appendChild(qEl);
+
+        stages[index].opts.forEach((opt, i) => {
+          const optEl = document.createElement('div');
+          optEl.className = 'option';
+          optEl.textContent = opt;
+          optEl.addEventListener('click', () => checkAnswer(optEl, i === stages[index].correct));
+          quizDiv.appendChild(optEl);
+        });
+
+        // تنظیم تایمر
+        timeLeft = (difficulty === 'easy') ? 30 : (difficulty === 'medium') ? 20 : 10;
+        document.getElementById('timer').innerText = 'زمان باقی‌مانده: ' + timeLeft + ' ثانیه';
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(updateTimer, 1000);
+      } catch (e) {
+        console.error('خطا در loadStage:', e);
+        alert('مشکل در بارگذاری مرحله. کنسول را بررسی کن.');
+      }
+    }
+
+    function updateTimer() {
+      timeLeft--;
+      document.getElementById('timer').innerText = 'زمان باقی‌مانده: ' + timeLeft + ' ثانیه';
+      if (timeLeft <= 0) {
+        clearInterval(timerInterval);
+        alert('⏱ زمان تمام شد!');
+        nextStage();
+      }
+    }
+
+    function checkAnswer(el, isCorrect) {
+      clearInterval(timerInterval);
+      if (isCorrect) {
+        el.classList.add('correct');
+        score++;
+        document.getElementById('score').innerText = 'امتیاز: ' + score;
+        alert('آفرین! جواب درست بود 🎉');
+      } else {
+        el.classList.add('wrong');
+        alert('اشتباه شد 😅');
+      }
+      nextStage();
+    }
+
+    function nextStage() {
+      currentStage++;
+      if (currentStage < stages.length) {
+        loadStage(currentStage);
+      } else {
+        alert('👏 تبریک! همه مراحل سطح و حجم رو گذروندی. امتیاز نهایی: ' + score);
+        // امکان شروع دوباره
+        document.getElementById('difficulty').style.display = 'block';
+        document.getElementById('quiz').innerHTML = '';
+        document.getElementById('timer').innerText = '';
+      }
+    }
+
+    // رندر دائمی
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // واکنش به تغییر اندازه صفحه
+    window.addEventListener('resize', () => {
+      renderer.setSize(window.innerWidth, window.innerHeight / 2);
+      camera.aspect = window.innerWidth / (window.innerHeight / 2);
+      camera.updateProjectionMatrix();
+    });
+  </script>
+</body>
+</html>
